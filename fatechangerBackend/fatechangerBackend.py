@@ -24,7 +24,7 @@ def mapNodeNamesToCreationMethods():
     nodesToMethods = {"ACTIONS" : createActionNode,
                       "COUNTRIES" : createCountriesNode, 
                       "POLICIES" : createPoliciesNode}
-    print(nodesToMethods)
+
 def downloadFateChangerFirebase():
 
     global nodeAll
@@ -41,7 +41,6 @@ def downloadFateChangerFirebase():
         # node is a top level branch of Firebase root database
         if nodeName in nodeSkipList:
             continue
-        print("Node name: " + nodeName)
         mapKeysToCols = {} 
         # ensure class a dictionary 
         if type(node) is list:
@@ -110,11 +109,9 @@ def createFateChangerWorkbook():
     #===========================================================================
     writer.close()
 def createUsersFile():
-    print("create CSV file of users")
     ksoUsersFileName = home + '/KSO/ksoUsers.csv'
     ksoUsersFilePath = Path(ksoUsersFileName)
     try:
-        print("")
         if ksoUsersFilePath.exists():
             # rename
             ksoTime = datetime.datetime.today().strftime("%Y%m%d_%H%M%S%f")
@@ -136,13 +133,13 @@ def createUsersFile():
                     line = "User UID ("+uid+") doesn't expected number of data items. Seek technical help"
                 ksoUsersFile.write(line+'\n')           
             ksoUsersFile.close()
-        print('wrote users file')
+
                                    
             
             
         
     except Exception as err:
-        print("Failure with error: " )
+        print("Failure with error in createUsersFile(): " )
         print(err)
     
 
@@ -165,13 +162,12 @@ def createActionNode():
             action = firebaseRow["ACTIONS_keys"]
             del firebaseRow["ACTIONS_keys"]
             if isDeleteAction:
-                print("Delete action: ", actionsDataFrame.get_values()[0][i])
                 ref.child(action).delete()
             else:
                 ref.update({action:firebaseRow})   
             isDeleteAction = True
         except Exception as err:
-            print("error encountered. Get technical help", err)
+            print("error encountered in CreateActionNode(). Get technical help", err)
         
         
 def createPoliciesNode():
@@ -192,13 +188,12 @@ def createPoliciesNode():
             policy = firebaseRow["POLICIES_keys"]
             del firebaseRow["POLICIES_keys"]
             if isDeleteAction:
-                print("Delete action: ", policiesDataFrame.get_values()[0][i])
                 ref.child(policy).delete()
             else:
                 ref.update({policy:firebaseRow})   
             isDeleteAction = True
         except Exception as err:
-            print("error encountered. Get technical help", err)
+            print("error encountered in createPoliciesNode(). Get technical help", err)
         
 def cleanCountryData(countryName, countryAddress):
     # cleanse data
@@ -229,7 +224,6 @@ def createCountriesNode():
                 isDeleteAction = False
         try:
             if isDeleteAction:
-                print("Delete action: ", countriesDataFrame.get_values()[0][i])
                 ref.child("COUNTRIES").child(countriesDataFrame.get_values()[0][i]).delete()
             else:
                 editedFirebaseRow = editFirebaseFields(firebaseRow)
@@ -238,7 +232,7 @@ def createCountriesNode():
                 ref.update({country:editedFirebaseRow})   
             isDeleteAction = True
         except Exception as err:
-            print("error encountered. Get technical help", err)
+            print("error encountered in createCountries(). Get technical help", err)
     
     
     
@@ -275,15 +269,15 @@ def editFirebaseFields(firebaseRow):
                     firebaseRow["longitude"] = exceptionCountries[country][1]
                     firebaseRow["latitude"] = exceptionCountries[country][0]
                 else:
-                    print("can't find "  + country + " in United Nations file")
+                    print("Error in editFirebaseFields(), can't find "  + country + " in United Nations file")
             else:
                 if countryNameInUN in refGeoLocations:
                     firebaseRow["longitude"] = refGeoLocations[country][1]
                     firebaseRow["latitude"] = refGeoLocations[country][0]
                 else:
-                    print("Logic error. UN country name translation error: " + countryNameInUN)
+                    print("Logic error in editFirebaseFields(). UN country name translation error: " + countryNameInUN)
         else:
-            print("Logic error. Cannot find country, \"" + country + "\"")
+            print("Logic error in editFirebaseFields(). Cannot find country, \"" + country + "\"")
     return firebaseRow
 
 
@@ -320,15 +314,15 @@ def mapFirebaseFieldsToExcelColumns(nodeName, dataFrame):
             mapFirebaseToExcel[dataFrame.columns[colIndex]] = colIndex
     # first column 
     if len(validFirebaseFields) != len(mapFirebaseToExcel):
-        print("Missing Firebase fields for ", nodeName, " in Excel worksheet")
+        print("Missing Firebase fields for ", nodeName, " in Excel worksheet. Check work and rerun script")
     return mapFirebaseToExcel
 
     
 def createReports():
-    print("Starting reports")
+    print("Starting Fatechanger reports")
     createFateChangerWorkbook()
     createUsersFile()
-    print("Finished reports")
+    print("Finished Fatechanger reports")
     
 def verifyWorkbook(ksoFileName):
     # verify worksheets name
@@ -441,7 +435,7 @@ ksoFilePath = Path(ksoFileName)
 locationsOfCapitalsFileName = home + "/KSO/WUP2018-F13-Capital_Cities.xls"
 locationsOfCapitalsFilePath = Path(locationsOfCapitalsFileName)
 if not ksoFilePath.exists() :
-    print("no kso.xlsx file found, producing reports output")
+    print("no kso.xlsx file found, creating reports only")
     createReports()
 else:
     print("opened opened input file, ", ksoFileName)
