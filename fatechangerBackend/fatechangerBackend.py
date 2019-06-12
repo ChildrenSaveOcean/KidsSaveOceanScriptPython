@@ -16,6 +16,36 @@ import os
 from docutils.utils.math.math2html import Newline
 from pandas.core.config_init import colheader_justify_doc
 from dill.dill import check
+from math import isnan
+from numpy.f2py.common_rules import findcommonblocks
+
+def readSourceCountries():
+    global mapFirebaseKeyToCountryName
+    global mapCountryNumberToCode
+    countriesDataFrame = pd.read_excel(pederFileName, sheet_name="Sheet1")
+    isoDataFrame = pd.read_excel(isoFileName, sheet_name="ISO_LOOKUP")
+    # map country number to country code
+    mapCountryNumberToCode = {}
+    for i in range(len(isoDataFrame.get_values())):
+        code = isoDataFrame.get_values()[i][0]
+        if isnan(code):
+            continue
+        if code == 516:
+            # The country code for Namibia is NA. Pandas considers NA to be NaN in Python. Fix it.
+            mapCountryNumberToCode[int(isoDataFrame.get_values()[i][0])] = "NA"
+        else:
+            mapCountryNumberToCode[int(isoDataFrame.get_values()[i][0])] = isoDataFrame.get_values()[i][1]
+    print("iso mapping:")
+    print(mapCountryNumberToCode)
+    mapFirebaseKeyToCountryName = {}
+    # cleansed Country key to source country name
+    # process all data rows for Excel worksheet
+    for i in range(len(countriesDataFrame.get_values())):
+        # process rows of data
+        firebaseKey = prepCountryKey(countriesDataFrame.get_values()[i][0])
+        mapFirebaseKeyToCountryName[firebaseKey] = countriesDataFrame.get_values()[i][0]
+    print("end readSourceCountries--seed only")
+    
 
 
 def mapNodeNamesToCreationMethods():
@@ -195,18 +225,9 @@ def createPoliciesNode():
         except Exception as err:
             print("error encountered in createPoliciesNode(). Get technical help", err)
         
-def cleanCountryData(countryName, countryAddress):
-    # cleanse data
-    name = countryName
-    address = countryAddress
-    return (name, address)
-                 
+            
                 
 def createCountriesNode():
-    #
-    # Fix code to use Firebase version of Excel sheet
-    #
-    
 
     # point to COUNTRIES node in Firebase
     ref = db.reference('COUNTRIES')
@@ -219,17 +240,24 @@ def createCountriesNode():
     for i in range(len(countriesDataFrame.get_values())):
         # process rows of data
         for colName, colIndex in map.items():
+            # seed check
+            if colIndex == len(countriesDataFrame.get_values()[i]):
+                break
             firebaseRow[colName] = countriesDataFrame.get_values()[i][colIndex]
             if pd.notna(countriesDataFrame.get_values()[i][colIndex]) and colName != "COUNTRIES_keys":
                 isDeleteAction = False
         try:
             if isDeleteAction:
-                ref.child("COUNTRIES").child(countriesDataFrame.get_values()[0][i]).delete()
+                ref.child(countriesDataFrame.get_values()[0][i]).delete()
             else:
+                oldFirebaseKey = firebaseRow["COUNTRIES_keys"]
                 editedFirebaseRow = editFirebaseFields(firebaseRow)
+                if editedFirebaseRow == None:
+                    continue
                 country = editedFirebaseRow["COUNTRIES_keys"]
                 del editedFirebaseRow["COUNTRIES_keys"]
                 ref.update({country:editedFirebaseRow})   
+                ref.child(oldFirebaseKey).delete()
             isDeleteAction = True
         except Exception as err:
             print("error encountered in createCountries(). Get technical help", err)
@@ -238,46 +266,48 @@ def createCountriesNode():
     
 def editFirebaseFields(firebaseRow):    
     
-    country = firebaseRow["COUNTRIES_keys"]
+    country = firebaseRow["COUNTRIES_keys"] # Firebase key
     checkAddress = firebaseRow["country_address"]
     # remove invalid key characters
-    country = country.strip()
-    if "." in country:
-        country = country.replace(".", " ")
-    if "/" in country:
-        country = country.replace("/", " ")
-    if "#" in country:
-        country = country.replace("#", " ")
-    if "$" in country:
-        country = country.replace("$", " ")
-    if "[" in country:
-        country = country.replace("[", " ")
-    if "]" in country:
-        country = counry.replace("]", " ")
-    firebaseRow["COUNTRIES_keys"] = country
+    #===========================================================================
+    # country = country.strip()
+    # if "." in country:
+    #     country = country.replace(".", " ")
+    # if "/" in country:
+    #     country = country.replace("/", " ")
+    # if "#" in country:
+    #     country = country.replace("#", " ")
+    # if "$" in country:
+    #     country = country.replace("$", " ")
+    # if "[" in country:
+    #     country = country.replace("[", " ")
+    # if "]" in country:
+    #     country = counry.replace("]", " ")
+    #===========================================================================
+    
+    # map Firebase country key to country code
+    # the Firebase country name may either be the same as the UN country name or it may need to be translated before its profile can be retrieved
+    findCountryByFirebaseKey = country
+    
+    # check for exact match
+    if findCountryByFirebaseKey in refGeoLocationsbyCountryNameUN:
+        countryProfile = refGeoLocationsbyCountryNameUN[findCountryByFirebaseKey] # returns tuple
+    else:
+        if findCountryByFirebaseKey in translateCountries:
+            countryUNKey = translateCountries[findCountryByFirebaseKey] # get UN key
+            countryProfile = refGeoLocationsbyCountryNameUN[countryUNKey] # return tuple
+        else: 
+            print("Invalid country: ", country, ", get technical help")
+            return None
     if "\\n" in checkAddress:
         checkAddress = checkAddress.replace("\\n",'\n')
+    # Post Firebase data
+    firebaseRow["COUNTRIES_keys"] = countryProfile[3] # make country code the Firebase key
+    firebaseRow["country_number"] = countryProfile[2]
+    firebaseRow["country_name"] = (mapFirebaseKeyToCountryName[findCountryByFirebaseKey]).strip() # use KSO country name
     firebaseRow["country_address"] = checkAddress
-    if country in refGeoLocations:
-        firebaseRow["longitude"] = refGeoLocations[country][1]
-        firebaseRow["latitude"] = refGeoLocations[country][0]
-    else:
-        if country in translateCountries:
-            countryNameInUN = translateCountries[country]
-            if countryNameInUN == None:
-                if country in exceptionCountries:
-                    firebaseRow["longitude"] = exceptionCountries[country][1]
-                    firebaseRow["latitude"] = exceptionCountries[country][0]
-                else:
-                    print("Error in editFirebaseFields(), can't find "  + country + " in United Nations file")
-            else:
-                if countryNameInUN in refGeoLocations:
-                    firebaseRow["longitude"] = refGeoLocations[country][1]
-                    firebaseRow["latitude"] = refGeoLocations[country][0]
-                else:
-                    print("Logic error in editFirebaseFields(). UN country name translation error: " + countryNameInUN)
-        else:
-            print("Logic error in editFirebaseFields(). Cannot find country, \"" + country + "\"")
+    firebaseRow["longitude"] = countryProfile[1]
+    firebaseRow["latitude"] = countryProfile[0]
     return firebaseRow
 
 
@@ -315,6 +345,10 @@ def mapFirebaseFieldsToExcelColumns(nodeName, dataFrame):
     # first column 
     if len(validFirebaseFields) != len(mapFirebaseToExcel):
         print("Missing Firebase fields for ", nodeName, " in Excel worksheet. Check work and rerun script")
+    # seed code for country code
+    if nodeName == "COUNTRIES":
+        mapFirebaseToExcel["country_name"] = len(mapFirebaseToExcel)
+        mapFirebaseToExcel["country_number"] = len(mapFirebaseToExcel)
     return mapFirebaseToExcel
 
     
@@ -354,17 +388,17 @@ def mapCountryNameToUnitiedNationsCountryName():
                           'Iran' : 'Iran (Islamic Republic of)',
                           'Korea, North' : 'Dem. People\'s Republic of Korea',
                           'Korea, South' : 'Republic of Korea',
-                          'Kosovo' : None,
+#                          'Kosovo' : None,
                           'Laos' : 'Lao People\'s Democratic Republic',
                           'Micronesia, Fed  St ' : 'Micronesia (Fed. States of)',
                           'Moldova' : 'Republic of Moldova',
                           'North Macedonia' : 'TFYR Macedonia',
-                          'Reunion' : None,
+                          'Reunion' : "Réunion",
                           'Russia' : 'Russian Federation',
                           'Saint Kitts & Nevis' : 'Saint Kitts and Nevis',
                           'Sao Tome & Principe' : 'Sao Tome and Principe',
                           'Syria' : 'Syrian Arab Republic',
-                          'Taiwan' : None,
+                          'Taiwan' : "China, Taiwan Province of China",
                           'Tanzania' : 'United Republic of Tanzania',
                           'Trinidad & Tobago' : 'Trinidad and Tobago',
                           'United States' : 'United States of America',
@@ -374,30 +408,35 @@ def mapCountryNameToUnitiedNationsCountryName():
                           'Virgin Islands' : 'United States Virgin Islands'
                           }
     
-    exceptionCountries = {'Kosovo' : (42.667542, 21.166191),
-                          'Reunion' : (-20.8907, 55.4551 ),
-                          'Taiwan' : (25.0330, 121.5654)
-                          }
-    return (translateCountries, exceptionCountries)
+    #===========================================================================
+    # exceptionCountries = {'Kosovo' : (42.667542, 21.166191)
+    #                       }
+    #===========================================================================
+    return translateCountries #, exceptionCountries)
 
 def getUN():
     # United Nations info
     lf = pd.read_excel(locationsOfCapitalsFileName, sheet_name = 'Data', skiprows=16)
     # build longitude and latitude for countries' capitals
-    refGeoLocations = {} # key is country, value = {longitude, latitude}
-    lastCountry = None
+    refGeoLocationsbyCountryNameUN = {} # key is country, value = {longitude, latitude}
+    unLastCountry = None
     for l in lf.index:
         # country in column 1, longitude in column 7, latitude in column 8
-        countryName = lf.get_values()[l][1]
-        if lastCountry == None:
-            lastCountry = countryName
+        unCountryName = lf.get_values()[l][1] # UN country name
+        if unLastCountry == None:
+            unLastCountry = unCountryName
         else:
-            if countryName == lastCountry:
+            if unCountryName == unLastCountry:
                 continue # the United Nations file contains countries with two capitals
         countryLongitude = lf.get_values()[l][8]
         countryLatitude = lf.get_values()[l][7]
-        refGeoLocations[countryName] = (countryLatitude, countryLongitude)
-    return refGeoLocations   
+        unCountryNumber = lf.get_values()[l][2]
+        if unCountryNumber in mapCountryNumberToCode:
+            isoCountryCode = mapCountryNumberToCode[unCountryNumber]
+        else:
+            print(unCountryName, "not assigned an ISO country alpha-2 code. Skipping")
+        refGeoLocationsbyCountryNameUN[unCountryName] = (countryLatitude, countryLongitude, unCountryNumber,isoCountryCode)
+    return refGeoLocationsbyCountryNameUN   
 
 # Setup 
 #
@@ -434,6 +473,23 @@ ksoFileName = home + "/KSO/kso.xlsx"
 ksoFilePath = Path(ksoFileName)
 locationsOfCapitalsFileName = home + "/KSO/WUP2018-F13-Capital_Cities.xls"
 locationsOfCapitalsFilePath = Path(locationsOfCapitalsFileName)
+mapFirebaseKeyToCountryName = {}
+# seed code. Discard before releseing to production
+pederFileName = home + "/KSO/ksoCountriesSourceWithUpdates.xlsx"
+pederFilePath = Path(pederFileName)
+isoFileName = home + "/KSO/ISO_Countries_Codes_Numbers.xlsx"
+isoFilePath = Path(isoFileName)
+#===============================================================================
+# if not pederFilePath.exists():
+#     print("Missing Peder's Excel workbook. Fix and retry")
+#     exit()
+# else:
+#     if not isoFilePath.exists():
+#         print("Missing ISO Excel workbook. Fix and retry")
+#     else:
+#         readSourceCountries()
+#     print("mapped Peder data")
+#===============================================================================
 if not ksoFilePath.exists() :
     print("no kso.xlsx file found, creating reports only")
     createReports()
@@ -448,8 +504,8 @@ else:
             exit()
         else:
             print("opened United Nations file", locationsOfCapitalsFileName)
-            translateCountries, exceptionCountries = mapCountryNameToUnitiedNationsCountryName()
-            refGeoLocations = getUN()
+            translateCountries = mapCountryNameToUnitiedNationsCountryName()
+            refGeoLocationsbyCountryNameUN = getUN()
     #uploadNodes()
     for ws in wsProcessList:
         runMethod = nodesToMethods[ws]
