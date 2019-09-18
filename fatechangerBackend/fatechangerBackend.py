@@ -227,7 +227,9 @@ def createCountriesNode():
         except Exception as err:
                 printInstructionsForISO(countriesDataFrame.get_values()[i][0])
                 continue
-    
+        if len(checkCountryCode) != 2:
+            printInstructionsForISO(checkCountryCode)
+            continue
         for colName, colIndex in map.items():
             # seed check
             if colIndex == len(countriesDataFrame.get_values()[i]):
@@ -314,6 +316,7 @@ def ksoSet(headers, rowValues, matchByLabel, replacementValue):
         ksoPos = headers.index(matchByLabel)
         rowValues[ksoPos] = replacementValue
     else: 
+        print("rowValues: ", rowValues)
         print("Mismatch between script and Firebase for ", matchByLabel, ". Seek technical help")
 
 
