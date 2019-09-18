@@ -18,6 +18,7 @@ from pandas.core.config_init import colheader_justify_doc
 from dill.dill import check
 from math import isnan
 from numpy.f2py.common_rules import findcommonblocks
+from logging import exception
 
     
 
@@ -27,7 +28,11 @@ def mapNodeNamesToCreationMethods():
     global nodesToMethods
     nodesToMethods = {"ACTIONS" : createActionNode,
                       "COUNTRIES" : createCountriesNode, 
-                      "POLICIES" : createPoliciesNode}
+                      "POLICIES" : createPoliciesNode,
+                      "CAMPAIGNS" : createCampaignsNode,
+                      "HIJACK_POLICIES" : createHijackPoliciesNode,
+                      "HIJACK_POLICY_LOCATIONS" : createHijackPolicyLocationsNode
+                    }
 
 def downloadFateChangerFirebase():
 
@@ -36,10 +41,16 @@ def downloadFateChangerFirebase():
     actionsDatabaseRef = db.reference("ACTIONS")
     policiesDatabaseRef = db.reference("POLICIES")
     countriesDatabaseRef = db.reference("COUNTRIES")
+    campaignsDatabaseRef = db.reference("CAMPAIGNS")
+    hijackPoliciesDatabaseRef = db.reference("HIJACK_POLICIES")
+    hijackPolicyLocationsRef = db.reference("HIJACK_POLICY_LOCATIONS")
     nodeAll = {}
     nodeAll["ACTIONS"] = actionsDatabaseRef.order_by_key().get()
     nodeAll["POLICIES"] = policiesDatabaseRef.order_by_key().get()
     nodeAll["COUNTRIES"] = countriesDatabaseRef.order_by_key().get()
+    nodeAll["CAMPAIGNS"] = campaignsDatabaseRef.order_by_key().get()
+    nodeAll["HIJACK_POLICIES"] = hijackPoliciesDatabaseRef.order_by_key().get()
+    nodeAll["HIJACK_POLICY_LOCATIONS"] = hijackPolicyLocationsRef.order_by_key().get()
     colHeaders = {}
     for nodeName, node in nodeAll.items():
         # node is a top level branch of Firebase root database
@@ -121,77 +132,71 @@ def createUsersFile():
         usersDatabaseRef = db.reference("USERS")
         nodeUsers = usersDatabaseRef.order_by_key().get()
         with open(ksoUsersFilePath, 'w') as ksoUsersFile:
-            line = "UID, dash_become_active_in_local_politics, dash_learn_about_problem, dash_protest, dash_share, dash_start_a_letter_writing_campaign, dash_write_a_letter,user_letters_written, user_person_type"
-            ksoUsersFile.write(line + '\n')
+            # line = "UID, dash_become_active_in_local_politics, dash_learn_about_problem, dash_protest, dash_share, dash_start_a_letter_writing_campaign, dash_write_a_letter,user_letters_written, user_person_type, "
+            lineA =  "UID, dash_joined_a_policy_hijack_campaign, dash_learn_about_problem, dash_protest, dash_share"
+            lineB = ", dash_wrote_a_letter_about_climate, dash_wrote_a_letter_about_plastic, user_letters_written, user_person_type"
+            lineC = ", campaign_id, signatures_pledged, signatures_collected, hijack_policy_selected"
+            line = lineA + lineB + lineC
+            ksoUsersFile.write(line + '\n') # header line
+            ksoHeaders = line.split(sep=', ') # create list of column headers
             for uid, userData in nodeUsers.items():
-                line =  ""
+                line = ["Missing Data"]*len(ksoHeaders)
+                if 'campaign' in userData:
+                    # campaign is optional for students
+                    studentCampaign = userData.pop('campaign')
+                    if 'campaign_id' in studentCampaign:
+                        ksoSet(ksoHeaders, line, 'campaign_id', studentCampaign['campaign_id'])
+                    if 'signatures_collected' in studentCampaign:
+                        ksoSet(ksoHeaders, line, 'signatures_collected', studentCampaign['signatures_collected'])
+                    if 'signatures_pledged' in studentCampaign:
+                        ksoSet(ksoHeaders, line, 'signatures_pledged', studentCampaign['signatures_pledged'])
                 userValues = list(userData.values())
-                if len(userValues) == 8:
-                    csvLine = [] # prep output line
-                    csvLine.append(uid) # post UID
-                    csvLine.extend(userValues)
-                    line = ','.join(str(x) for x in csvLine)
-                else:
-                    line = "User UID ("+uid+") doesn't expected number of data items. Seek technical help"
-                ksoUsersFile.write(line+'\n')           
+                userKeys = list(userData.keys())
+                for i in range(len(userKeys)):
+                    ksoSet(ksoHeaders, line, userKeys[i], userValues[i])
+                # post UID
+                line[0] = uid
+                outLine = ','.join(map(str,line))
+                ksoUsersFile.write(outLine+'\n')           
             ksoUsersFile.close()
     except Exception as err:
         print("Failure with error in createUsersFile(): " )
         print(err)
     
-
-    
-def createActionNode():
-    ref = db.reference('ACTIONS')
-    actionsDataFrame = pd.read_excel(ksoFileName, sheet_name="ACTIONS")
-    map = mapFirebaseFieldsToExcelColumns("ACTIONS", actionsDataFrame)
+def createNode(nodeName):
+    ref = db.reference(nodeName)
+    nodeKey = nodeName + '_keys'
+    nodeDataFrame = pd.read_excel(ksoFileName, sheet_name=nodeName)
+    map = mapFirebaseFieldsToExcelColumns(nodeName, nodeDataFrame)
     firebaseRow = {}
     # post Excel data to Firebase
     isDeleteAction = True
     # process all data rows for Excel worksheet
-    for i in range(len(actionsDataFrame.get_values())):
+    for i in range(len(nodeDataFrame.get_values())):
         # process rows of data
         for colName, colIndex in map.items():
-            firebaseRow[colName] = actionsDataFrame.get_values()[i][colIndex]
-            if pd.notna(actionsDataFrame.get_values()[i][colIndex]) and colName != "ACTIONS_keys":
+            firebaseRow[colName] = nodeDataFrame.get_values()[i][colIndex]
+            if pd.notna(nodeDataFrame.get_values()[i][colIndex]) and colName != nodeKey:
                 isDeleteAction = False
         try:
-            action = firebaseRow["ACTIONS_keys"]
-            del firebaseRow["ACTIONS_keys"]
+            action = firebaseRow[nodeKey]
+            del firebaseRow[nodeKey]
             if isDeleteAction:
                 ref.child(action).delete()
             else:
                 ref.update({action:firebaseRow})   
             isDeleteAction = True
         except Exception as err:
-            print("error encountered in CreateActionNode(). Get technical help", err)
+            print("error encountered in createNode(). Get technical help", err)
+        
+   
+def createActionNode():
+    createNode('ACTIONS')
         
         
 def createPoliciesNode():
-    ref = db.reference('POLICIES')
-    policiesDataFrame = pd.read_excel(ksoFileName, sheet_name="POLICIES")
-    map = mapFirebaseFieldsToExcelColumns("POLICIES", policiesDataFrame)
-    firebaseRow = {}
-    # post Excel data to Firebase
-    isDeleteAction = True
-    # process all data rows for Excel worksheet
-    for i in range(len(policiesDataFrame.get_values())):
-        # process rows of data
-        for colName, colIndex in map.items():
-            firebaseRow[colName] = policiesDataFrame.get_values()[i][colIndex]
-            if pd.notna(policiesDataFrame.get_values()[i][colIndex]) and colName != "POLICIES_keys":
-                isDeleteAction = False
-        try:
-            policy = firebaseRow["POLICIES_keys"]
-            del firebaseRow["POLICIES_keys"]
-            if isDeleteAction:
-                ref.child(policy).delete()
-            else:
-                ref.update({policy:firebaseRow})   
-            isDeleteAction = True
-        except Exception as err:
-            print("error encountered in createPoliciesNode(). Get technical help", err)
-        
+    createNode('POLICIES')
+    
             
                 
 def createCountriesNode():
@@ -206,6 +211,23 @@ def createCountriesNode():
     # process all data rows for Excel worksheet
     for i in range(len(countriesDataFrame.get_values())):
         # process rows of data
+        #
+
+        # prevent entry of invalid country code
+        try:
+                    # bug in pandas. "NA" key interpreted as nan
+            if pd.isna(countriesDataFrame.get_values()[i][0]):
+                 checkCountryCode ="NA"
+            else:
+                checkCountryCode = countriesDataFrame.get_values()[i][0]
+            if len(countries.get(checkCountryCode)) == 0:
+                # print warning
+                printInstructionsForISO(countriesDataFrame.get_values()[i][0])
+                continue
+        except Exception as err:
+                printInstructionsForISO(countriesDataFrame.get_values()[i][0])
+                continue
+    
         for colName, colIndex in map.items():
             # seed check
             if colIndex == len(countriesDataFrame.get_values()[i]):
@@ -227,8 +249,75 @@ def createCountriesNode():
         except Exception as err:
             print("error encountered in createCountries(). Get technical help", err)
     
+def printInstructionsForISO(countryCode):
+    print('*' * 50)
+    print(countryCode, " not found is ISO country codes. Row skipped. Please edit your worksheet data with a valid ISO country code.")
+    print("If you know the country code is correct then the next step is to update the script's ISO data.")
+    print("In a terminal window run this command, pip install iso3166")
+    print('*' * 50)
+        
+def createCampaignsNode():
+    # check foreign keys
+    nodeName = "CAMPAIGNS"
+    ref = db.reference(nodeName)
+    nodeKey = nodeName + '_keys'
+    nodeDataFrame = pd.read_excel(ksoFileName, sheet_name=nodeName)
+    map = mapFirebaseFieldsToExcelColumns(nodeName, nodeDataFrame)
+    firebaseRow = {}
+    # post Excel data to Firebase
+    isDeleteAction = True
+    # find foreign key columns
+    headers = list(nodeDataFrame.columns)
+    fkColHijackLocationIndex = headers.index("location_id")
+    fkColHijackPolicyIndex = headers.index("hijack_policy")
+    campaignKeyIndex = headers.index("CAMPAIGNS_keys")
+    nodeHijackPolicyLocations = nodeAll["HIJACK_POLICY_LOCATIONS"]
+    nodeHijackPolicies = nodeAll["HIJACK_POLICIES"]
+    # process all data rows for Excel worksheet
+    for i in range(len(nodeDataFrame.get_values())):
+        # process rows of data
+        # add foreign key check here
+        locationKey = nodeDataFrame.get_values()[i][fkColHijackLocationIndex]
+        policyKey = nodeDataFrame.get_values()[i][fkColHijackPolicyIndex]
+        if locationKey not in nodeHijackPolicyLocations.keys():
+            print("Campaign (", nodeDataFrame.get_values()[i][campaignKeyIndex], ") location foreign key not in database. Skipped campaign")
+            continue
+        if policyKey not in nodeHijackPolicies.keys():
+            print("Campaign (", nodeDataFrame.get_values()[i][campaignKeyIndex], ") hijack policy foreign key not in database. Skipped campaign")
+            continue
+        
+        for colName, colIndex in map.items():
+            firebaseRow[colName] = nodeDataFrame.get_values()[i][colIndex]
+            if pd.notna(nodeDataFrame.get_values()[i][colIndex]) and colName != nodeKey:
+                isDeleteAction = False
+        try:
+            action = firebaseRow[nodeKey]
+            del firebaseRow[nodeKey]
+            if isDeleteAction:
+                ref.child(action).delete()
+            else:
+                ref.update({action:firebaseRow})   
+            isDeleteAction = True
+        except Exception as err:
+            print("error encountered in createCampaignsNode(). Get technical help", err)
+
     
+def createHijackPoliciesNode():
+    createNode("HIJACK_POLICIES")
     
+def createHijackPolicyLocationsNode():
+    createNode("HIJACK_POLICY_LOCATIONS")
+
+def ksoSet(headers, rowValues, matchByLabel, replacementValue):
+    # verify a valid matchByLabel
+    if matchByLabel in headers:
+        ksoPos = headers.index(matchByLabel)
+        rowValues[ksoPos] = replacementValue
+    else: 
+        print("Mismatch between script and Firebase for ", matchByLabel, ". Seek technical help")
+
+
+
 def editFirebaseFields(firebaseRow):    
     
     checkAddress = firebaseRow["country_address"]
@@ -236,6 +325,9 @@ def editFirebaseFields(firebaseRow):
         checkAddress = checkAddress.replace("\\n",'\n')
     # Post Firebase data
     firebaseRow["country_address"] = checkAddress
+    # workaround bug in pandas for country code value of NA
+    if pd.isna(firebaseRow["COUNTRIES_keys"]):
+        firebaseRow["COUNTRIES_keys"] = "NA"
     return firebaseRow
 
 def mapFirebaseFieldsToExcelColumns(nodeName, dataFrame): 
@@ -273,6 +365,10 @@ def verifyWorkbook(ksoFileName):
             processWorksheets.append(ws)
     return processWorksheets
 
+def editChanges():
+    print("Edit changes")
+    
+    
 
 # Setup 
 #
@@ -300,6 +396,7 @@ else:
 cred = credentials.Certificate(adminSDKJSON) 
 # Initialize the app with a service account, granting admin privileges
 firebase_admin.initialize_app(cred, {
+    # test'databaseURL' : 'https://kidssaveoceandatabase.firebaseio.com/'
     'databaseURL': 'https://kids-save-ocean.firebaseio.com/'
 })
 # initialize Firebase access
@@ -316,6 +413,7 @@ else:
     if len(wsProcessList) == 0:
         print("No valid worksheets located. Can't process update Firebase database")
     # update Firebase nodes
+    editChanges()
     for ws in wsProcessList:
         runMethod = nodesToMethods[ws]
         runMethod()

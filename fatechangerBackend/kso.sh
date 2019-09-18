@@ -1,0 +1,2 @@
+exec KSO_Admin/fatechangerBackend/dist/fatechangerBackend
+
