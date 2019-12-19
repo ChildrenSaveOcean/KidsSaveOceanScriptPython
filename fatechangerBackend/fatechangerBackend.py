@@ -77,18 +77,18 @@ def downloadFateChangerFirebase():
         colHeaders[nodeName] = mapKeysToCols
 
 
-def createFateChangerWorkbook():
+def createFateChangerWorkbook(reportName):
     #===========================================================================
     # Creates ksoreports.xlsx file and ksousers.csv file from Firebase database
     #===========================================================================
-    ksoReportsFileName = home + "/KSO/ksoReports.xlsx"
+    ksoReportsFileName = home+"/KSO/"+reportName+".xlsx"
     ksoReportsFilePath = Path(ksoReportsFileName)
     if ksoReportsFilePath.exists():
         # rename 
         ksoTime = datetime.datetime.today().strftime("%Y%m%d_%H%M%S%f")
-        ksoReportsFilePath.rename(home+"/KSO/ksoReports_" + ksoTime + ".xlsx")
+        ksoReportsFilePath.rename(home + "/KSO/" + reportName + "_" + ksoTime + ".xlsx")
     # process every child of Firebase's root node
-    writer = ExcelWriter(home+'/KSO/ksoReports.xlsx')
+    writer = ExcelWriter(ksoReportsFileName)
     for nodeName, node in nodeAll.items():
         if nodeName in nodeSkipList:
             continue
@@ -118,24 +118,23 @@ def createFateChangerWorkbook():
         nodeDataFrame.to_excel(writer, sheet_name = nodeName, index=False)
     writer.close()
     
-def createUsersFile():
+def createUsersFile(usersName):
     #===========================================================================
     # Write USERS node to CSV file because of Excel's limit of 1M rows
     #===========================================================================
-    ksoUsersFileName = home + '/KSO/ksoUsers.csv'
+    ksoUsersFileName = home + '/KSO/' + usersName + '.csv'
     ksoUsersFilePath = Path(ksoUsersFileName)
     try:
         if ksoUsersFilePath.exists():
             # rename
             ksoTime = datetime.datetime.today().strftime("%Y%m%d_%H%M%S%f")
-            ksoUsersFilePath.rename(home+"/KSO/ksoUsers_" + ksoTime + ".csv")
+            ksoUsersFilePath.rename(home+"/KSO/" + usersName + "_" + ksoTime + ".csv")
         usersDatabaseRef = db.reference("USERS")
         nodeUsers = usersDatabaseRef.order_by_key().get()
         with open(ksoUsersFilePath, 'w') as ksoUsersFile:
-            # line = "UID, dash_become_active_in_local_politics, dash_learn_about_problem, dash_protest, dash_share, dash_start_a_letter_writing_campaign, dash_write_a_letter,user_letters_written, user_person_type, "
             lineA =  "UID, dash_joined_a_policy_hijack_campaign, dash_learn_about_problem, dash_protest, dash_share"
-            lineB = ", dash_wrote_a_letter_about_climate, dash_wrote_a_letter_about_plastic, user_letters_written, user_person_type"
-            lineC = ", campaign_id, signatures_pledged, signatures_collected, hijack_policy_selected"
+            lineB = ", dash_wrote_a_letter_about_climate, dash_wrote_a_letter_about_plastic, location_id, signatures_pledged, user_letters_written, user_person_type"
+            lineC = ", campaign_id, signatures_collected, hijack_policy_selected"
             line = lineA + lineB + lineC
             ksoUsersFile.write(line + '\n') # header line
             ksoHeaders = line.split(sep=', ') # create list of column headers
@@ -148,8 +147,6 @@ def createUsersFile():
                         ksoSet(ksoHeaders, line, 'campaign_id', studentCampaign['campaign_id'])
                     if 'signatures_collected' in studentCampaign:
                         ksoSet(ksoHeaders, line, 'signatures_collected', studentCampaign['signatures_collected'])
-                    if 'signatures_pledged' in studentCampaign:
-                        ksoSet(ksoHeaders, line, 'signatures_pledged', studentCampaign['signatures_pledged'])
                 userValues = list(userData.values())
                 userKeys = list(userData.keys())
                 for i in range(len(userKeys)):
@@ -349,10 +346,10 @@ def mapFirebaseFieldsToExcelColumns(nodeName, dataFrame):
     return mapFirebaseToExcel
 
     
-def createReports():
+def createReports(reportName, usersName):
     print("Starting Fatechanger reports")
-    createFateChangerWorkbook()
-    createUsersFile()
+    createFateChangerWorkbook(reportName)
+    createUsersFile(usersName)
     print("Finished Fatechanger reports")
     
 def verifyWorkbook(ksoFileName):
@@ -381,15 +378,33 @@ def editChanges():
 #===============================================================================
 # Main 
 #===============================================================================
+print("fatechangerBackend.py Version 1, run on ",datetime.datetime)
 home = str(Path.home())
 listOfNodes = []
 nodeAll = {}
 nodeSkipList = ["USERS", "PERSON_TYPE"]
 colHeaders = {}
 nodesToMethods = {}
-
+# identify the Firebase database to use
+ksoDatabase = "https://kids-save-ocean.firebaseio.com/"
 # Fetch the service account key JSON file contents
 adminSDKJSON = home + "/KSO/kids-save-ocean-firebase-adminsdk-g1fqp-abd71c2f01.json"
+# identify the input file
+ksoFileName = home + "/KSO/kso.xlsx"
+# identify report file name
+ksoReportName = "ksoReports"
+# identify users files name
+ksoUsersName = "ksoUsers"
+# override parameters if test selected
+if len(sys.argv) == 2:
+    if "test" == sys.argv[1]:
+        ksoDatabase="https://kids-save-ocean-test.firebaseio.com/"
+        adminSDKJSON = home + "/KSO/kids-save-ocean-test-firebase-adminsdk-t8sfp-97dae1ed9e.json"
+        ksoFileName = home + "/KSO/ksoTest.xlsx"
+        ksoReportName ="ksoTestReports"
+        ksoUsersName = "ksoTestUsers"
+print("Using Firebase database: ", ksoDatabase)
+
 adminPath = Path(adminSDKJSON)
 if not adminPath.exists() :
     print("no Firebase key file found. Fix and rerun")
@@ -400,16 +415,16 @@ cred = credentials.Certificate(adminSDKJSON)
 # Initialize the app with a service account, granting admin privileges
 firebase_admin.initialize_app(cred, {
     # test'databaseURL' : 'https://kidssaveoceandatabase.firebaseio.com/'
-    'databaseURL': 'https://kids-save-ocean.firebaseio.com/'
+    'databaseURL': ksoDatabase
 })
 # initialize Firebase access
 mapNodeNamesToCreationMethods()
 downloadFateChangerFirebase()
-ksoFileName = home + "/KSO/kso.xlsx"
+
 ksoFilePath = Path(ksoFileName)
 if not ksoFilePath.exists() :
-    print("no kso.xlsx file found, creating reports only")
-    createReports()
+    print("no" + ksoFileName + " file found; creating reports only")
+    createReports(ksoReportName, ksoUsersName)
 else:
     print("opened opened input file, ", ksoFileName)
     wsProcessList = verifyWorkbook(ksoFileName)
@@ -421,6 +436,6 @@ else:
         runMethod = nodesToMethods[ws]
         runMethod()
     downloadFateChangerFirebase() # refresh Firebase data after updates processed
-    createReports() # produce reports
+    createReports(ksoReportName, ksoUsersName) # produce reports
 
 print("Finished FateChanger backend processing")
