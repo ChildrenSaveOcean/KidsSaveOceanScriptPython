@@ -7,7 +7,7 @@ from pandas import ExcelFile
 import xlrd
 from pathlib  import Path
 from tokenize import String
-import datetime
+from  datetime import datetime
 import csv
 from iso3166 import countries
 import sys
@@ -85,7 +85,7 @@ def createFateChangerWorkbook(reportName):
     ksoReportsFilePath = Path(ksoReportsFileName)
     if ksoReportsFilePath.exists():
         # rename 
-        ksoTime = datetime.datetime.today().strftime("%Y%m%d_%H%M%S%f")
+        ksoTime = datetime.now().strftime("%Y%m%d_%H%M%S%f")
         ksoReportsFilePath.rename(home + "/KSO/" + reportName + "_" + ksoTime + ".xlsx")
     # process every child of Firebase's root node
     writer = ExcelWriter(ksoReportsFileName)
@@ -127,7 +127,7 @@ def createUsersFile(usersName):
     try:
         if ksoUsersFilePath.exists():
             # rename
-            ksoTime = datetime.datetime.today().strftime("%Y%m%d_%H%M%S%f")
+            ksoTime = datetime.now().strftime("%Y%m%d_%H%M%S%f")
             ksoUsersFilePath.rename(home+"/KSO/" + usersName + "_" + ksoTime + ".csv")
         usersDatabaseRef = db.reference("USERS")
         nodeUsers = usersDatabaseRef.order_by_key().get()
@@ -314,7 +314,7 @@ def ksoSet(headers, rowValues, matchByLabel, replacementValue):
         rowValues[ksoPos] = replacementValue
     else: 
         print("rowValues: ", rowValues)
-        print("Mismatch between script and Firebase for ", matchByLabel, ". Seek technical help")
+        print("Mismatch between script and Firebase for ", matchByLabel, ". Seek assistance from app developers because the database contents don’t match the database design. Apps are writing incorrect data to Firebase database")
 
 
 
@@ -378,7 +378,10 @@ def editChanges():
 #===============================================================================
 # Main 
 #===============================================================================
-print("fatechangerBackend.py Version 1, run on ",datetime.datetime)
+# datetime object containing current date and time
+runTime = datetime.now()
+fNow = runTime.strftime("%Y-%m-%d %H:%M:%S")
+print("fatechangerBackend.py Version 1, run on ",fNow)
 home = str(Path.home())
 listOfNodes = []
 nodeAll = {}
